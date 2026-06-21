@@ -7,7 +7,7 @@ $AGENTDIR  = Join-Path $ROOT "agent"
 $PYTHON    = Join-Path $AGENTDIR "venv\Scripts\python.exe"
 $PIP       = Join-Path $AGENTDIR "venv\Scripts\pip.exe"
 $MAINPY    = Join-Path $AGENTDIR "main.py"
-$WAZUHDIR  = Join-Path $ROOT "wazuh-docker"
+$WAZUHDIR  = Join-Path $ROOT "wazuh-docker\stable-config\single-node"
 
 function Show-Header {
     Clear-Host

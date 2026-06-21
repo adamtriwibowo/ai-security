@@ -20,7 +20,7 @@ services:
       - "1514:1514"         # Agent registration (UDP)
       - "1515:1515"         # Agent registration (TCP)
       - "514:514/udp"       # Syslog
-      - "55000:55000"       # Wazuh API
+      - "55300:55000"       # Wazuh API (55000 dicadangkan Windows)
     environment:
       - INDEXER_URL=https://wazuh.indexer:9200
       - INDEXER_USERNAME=admin
