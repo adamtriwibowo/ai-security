@@ -71,6 +71,12 @@ Berikan analisis keamanan komprehensif."""
                 {"role": "user", "content": user_message},
             ],
             "stream": True,
+            "options": {
+                "num_ctx": 8192,
+                "temperature": 0.1,
+                "repeat_penalty": 1.2,
+                "num_predict": 1024,
+            },
         }
 
         async with self._client.stream("POST", "/api/chat", json=payload) as resp:
@@ -93,7 +99,7 @@ Berikan analisis keamanan komprehensif."""
             return "Tidak ada alert yang ditemukan."
 
         lines = [f"Total alert: {len(alerts)}\n"]
-        for i, alert in enumerate(alerts[:20], 1):
+        for i, alert in enumerate(alerts[:10], 1):
             rule = alert.get("rule", {})
             agent = alert.get("agent", {})
             lines.append(
