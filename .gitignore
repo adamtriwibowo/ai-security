@@ -19,5 +19,9 @@ wazuh-docker/.wazuh-config/
 .vscode/
 .idea/
 
+# Output files
+agent/*_output.txt
+agent/*.log
+
 # Claude
 claude --resume *.txt
