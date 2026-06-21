@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+venv/
+.venv/
+*.egg-info/
+
+# Environment
+.env
+!.env.example
+
+# Wazuh Docker (cloned repos & generated certs - too large for git)
+wazuh-docker/stable-config/
+wazuh-docker/.wazuh-config/
+
+# IDE
+.vscode/
+.idea/
+
+# Claude
+claude --resume *.txt
