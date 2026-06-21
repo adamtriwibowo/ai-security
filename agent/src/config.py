@@ -1,5 +1,8 @@
+from pathlib import Path
 from pydantic_settings import BaseSettings
 from pydantic import Field
+
+_ENV_FILE = Path(__file__).parent.parent / ".env"
 
 
 class Settings(BaseSettings):
@@ -11,16 +14,16 @@ class Settings(BaseSettings):
 
     # Ollama
     ollama_base_url: str = Field(default="http://localhost:11434")
-    ollama_model: str = Field(default="llama3.1:8b")
+    ollama_model: str = Field(default="llama3.2:3b")
     ollama_timeout: int = Field(default=120)
 
     # Agent behavior
-    alert_severity_threshold: int = Field(default=7)  # 1-15 Wazuh scale
+    alert_severity_threshold: int = Field(default=7)
     max_alerts_per_analysis: int = Field(default=50)
     auto_response_enabled: bool = Field(default=False)
 
     class Config:
-        env_file = ".env"
+        env_file = str(_ENV_FILE)
         env_file_encoding = "utf-8"
 
 

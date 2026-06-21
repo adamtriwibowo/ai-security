@@ -72,9 +72,10 @@ Berikan analisis keamanan komprehensif."""
             ],
             "stream": True,
             "options": {
-                "num_ctx": 8192,
+                "num_gpu": 0,
+                "num_ctx": 4096,
                 "temperature": 0.1,
-                "repeat_penalty": 1.2,
+                "repeat_penalty": 1.1,
                 "num_predict": 1024,
             },
         }
