@@ -4,23 +4,16 @@ from typing import AsyncIterator
 from .config import settings
 
 
-SYSTEM_PROMPT = """Kamu adalah AI Security Analyst yang menganalisis alert dan event dari Wazuh SIEM.
+SYSTEM_PROMPT = """Kamu adalah AI Security Analyst yang membantu tim keamanan menganalisis data dari Wazuh SIEM.
 
-Tugas kamu:
-1. Analisis alert keamanan dan tentukan tingkat ancaman nyata (bukan hanya level Wazuh)
-2. Identifikasi pola serangan (brute force, lateral movement, exfiltration, dll)
-3. Berikan rekomendasi tindakan yang spesifik dan actionable
-4. Gunakan bahasa Indonesia yang jelas dan profesional
-5. Prioritaskan berdasarkan dampak bisnis
-
-Format respons kamu:
-- **Ringkasan**: 1-2 kalimat situasi keamanan saat ini
-- **Temuan Kritis**: Alert/event yang perlu segera ditindak
-- **Analisis Ancaman**: Pola dan konteks serangan yang terdeteksi
-- **Rekomendasi**: Langkah mitigasi yang harus dilakukan (urutkan prioritas)
-- **Monitoring**: Apa yang perlu dipantau selanjutnya
-
-Jangan panik berlebihan pada false positive. Gunakan konteks untuk menentukan ancaman nyata."""
+Panduan menjawab:
+- Jawab SESUAI pertanyaan yang diajukan, jangan selalu membahas semua alert
+- Jika ditanya tentang ancaman spesifik, fokus ke ancaman itu
+- Jika ditanya konsep keamanan umum (brute force, malware, dll), jelaskan konsepnya
+- Jika ditanya tentang data Wazuh, gunakan data konteks yang diberikan
+- Jika ditanya rekomendasi, berikan langkah konkret
+- Gunakan Bahasa Indonesia yang jelas dan profesional
+- Jawab ringkas dan tepat sasaran, jangan bertele-tele"""
 
 
 class LLMAgent:
@@ -45,36 +38,41 @@ class LLMAgent:
     ) -> AsyncIterator[str]:
         summary_ctx = ""
         if context:
-            summary_ctx = f"\nKonteks sistem: {json.dumps(context, ensure_ascii=False)}\n"
+            summary_ctx = f"Statistik sistem: {json.dumps(context, ensure_ascii=False)}\n\n"
 
         alert_text = self._format_alerts(alerts)
-        user_msg = f"""{summary_ctx}
-Analisis alert keamanan berikut dari Wazuh SIEM:
-
-{alert_text}
-
-Berikan analisis keamanan komprehensif."""
-
-        async for chunk in self._stream_chat(user_msg):
+        messages = [
+            {
+                "role": "user",
+                "content": (
+                    f"{summary_ctx}"
+                    f"Analisis alert keamanan berikut dari Wazuh SIEM dan berikan:\n"
+                    f"- Ringkasan situasi\n"
+                    f"- Temuan kritis\n"
+                    f"- Analisis ancaman\n"
+                    f"- Rekomendasi prioritas\n"
+                    f"- Apa yang perlu dipantau\n\n"
+                    f"{alert_text}"
+                ),
+            }
+        ]
+        async for chunk in self._stream_chat(messages):
             yield chunk
 
-    async def ask(self, question: str, context: str = "") -> AsyncIterator[str]:
-        user_msg = f"{context}\n\nPertanyaan: {question}" if context else question
-        async for chunk in self._stream_chat(user_msg):
+    async def ask(self, messages: list[dict]) -> AsyncIterator[str]:
+        """Chat dengan history percakapan penuh."""
+        async for chunk in self._stream_chat(messages):
             yield chunk
 
-    async def _stream_chat(self, user_message: str) -> AsyncIterator[str]:
+    async def _stream_chat(self, messages: list[dict]) -> AsyncIterator[str]:
         payload = {
             "model": settings.ollama_model,
-            "messages": [
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": user_message},
-            ],
+            "messages": [{"role": "system", "content": SYSTEM_PROMPT}] + messages,
             "stream": True,
             "options": {
                 "num_gpu": 0,
                 "num_ctx": 4096,
-                "temperature": 0.1,
+                "temperature": 0.3,
                 "repeat_penalty": 1.1,
                 "num_predict": 1024,
             },
@@ -108,8 +106,32 @@ Berikan analisis keamanan komprehensif."""
                 f"Level {rule.get('level', '?')} - {rule.get('description', 'N/A')}\n"
                 f"   Agent: {agent.get('name', 'N/A')} ({agent.get('ip', 'N/A')})\n"
                 f"   Groups: {', '.join(rule.get('groups', []))}\n"
-                f"   ID: {rule.get('id', 'N/A')}"
+                f"   Rule ID: {rule.get('id', 'N/A')}"
             )
+        return "\n".join(lines)
+
+    def format_wazuh_context(self, stats: dict, alerts: list[dict]) -> str:
+        """Buat ringkasan Wazuh yang detail untuk konteks chat."""
+        lines = [
+            "=== DATA WAZUH SAAT INI ===",
+            f"Total alert: {stats.get('total_alerts', 0)}",
+            f"Agent aktif: {stats.get('active_agents', 0)}",
+            f"Agent disconnect: {stats.get('disconnected_agents', 0)}",
+        ]
+
+        if alerts:
+            lines.append(f"\nAlert terbaru ({len(alerts)} alert):")
+            for i, alert in enumerate(alerts[:15], 1):
+                rule = alert.get("rule", {})
+                agent = alert.get("agent", {})
+                ts = alert.get("timestamp", "")[:19].replace("T", " ")
+                lines.append(
+                    f"{i}. [Level {rule.get('level', '?')}] {rule.get('description', 'N/A')}"
+                    f" | Agent: {agent.get('name', 'N/A')} | {ts}"
+                )
+        else:
+            lines.append("\nTidak ada alert terbaru.")
+
         return "\n".join(lines)
 
     async def close(self) -> None:

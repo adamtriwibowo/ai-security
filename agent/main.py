@@ -70,23 +70,49 @@ async def _run_analysis(min_level: int, limit: int) -> None:
         await llm.close()
 
 
+REFRESH_KEYWORDS = {
+    "alert", "ancaman", "serangan", "status", "agent", "terbaru",
+    "sekarang", "saat ini", "laporan", "deteksi", "insiden",
+}
+
+
 async def _run_chat() -> None:
     llm = LLMAgent()
     wazuh = WazuhClient()
 
     console.print(Panel(
-        "[bold]AI Security Analyst[/bold]\nKetik pertanyaan keamanan. 'exit' untuk keluar.",
+        "[bold]AI Security Analyst[/bold]\n"
+        "Tanya apa saja: analisis alert, konsep keamanan, rekomendasi.\n"
+        "'refresh' untuk update data Wazuh | 'exit' untuk keluar.",
         style="blue"
     ))
 
+    # Load konteks Wazuh awal
+    wazuh_context = ""
     try:
+        console.print("[dim]Memuat data Wazuh...[/dim]")
         stats = await wazuh.get_stats_summary()
-        recent_alerts = await wazuh.get_alerts(limit=10, min_level=7)
-        context = f"Stats Wazuh: {stats}\nAlert terbaru (level 7+): {len(recent_alerts)} alert"
+        alerts = await wazuh.get_alerts(limit=20, min_level=1)
+        wazuh_context = llm.format_wazuh_context(stats, alerts)
+        console.print(
+            f"[green]Data Wazuh dimuat:[/green] {stats['total_alerts']} alert, "
+            f"{stats['active_agents']} agent aktif\n"
+        )
     except Exception:
-        context = "Wazuh tidak tersedia. Jawab pertanyaan umum keamanan."
+        wazuh_context = ""
+        console.print("[yellow]Wazuh tidak tersedia. Mode tanya jawab umum aktif.[/yellow]\n")
 
-    history_context = context
+    # History percakapan — seed dengan data Wazuh
+    history: list[dict] = []
+    if wazuh_context:
+        history.append({
+            "role": "user",
+            "content": f"Ini adalah data Wazuh SIEM saya saat ini:\n\n{wazuh_context}\n\nSaya siap menerima pertanyaan."
+        })
+        history.append({
+            "role": "assistant",
+            "content": "Saya sudah membaca data Wazuh Anda. Silakan ajukan pertanyaan — bisa tentang alert yang ada, ancaman yang terdeteksi, atau topik keamanan lainnya."
+        })
 
     while True:
         try:
@@ -99,15 +125,40 @@ async def _run_chat() -> None:
         if not question:
             continue
 
-        console.print("\n[dim]AI Security Analyst sedang menganalisis...[/dim]\n")
-        result = []
+        # Refresh data Wazuh jika diminta atau pertanyaan relevan
+        if question.lower() == "refresh" or any(kw in question.lower() for kw in REFRESH_KEYWORDS):
+            try:
+                stats = await wazuh.get_stats_summary()
+                alerts = await wazuh.get_alerts(limit=20, min_level=1)
+                wazuh_context = llm.format_wazuh_context(stats, alerts)
+                user_msg = f"[Data Wazuh diperbarui]\n\n{wazuh_context}\n\nPertanyaan: {question}"
+            except Exception:
+                user_msg = question
+            if question.lower() == "refresh":
+                console.print("[green]Data Wazuh diperbarui.[/green]")
+                continue
+        else:
+            user_msg = question
+
+        history.append({"role": "user", "content": user_msg})
+
+        # Batasi history agar tidak meledak (max 10 turn = 20 pesan)
+        context_messages = history[-20:] if len(history) > 20 else history
+
+        console.print("\n[dim]AI Security Analyst sedang menjawab...[/dim]\n")
+        response_parts: list[str] = []
         try:
-            async for chunk in llm.ask(question, context=history_context):
-                result.append(chunk)
+            async for chunk in llm.ask(context_messages):
+                response_parts.append(chunk)
                 print(chunk, end="", flush=True)
             print()
         except Exception as e:
             console.print(f"[red]Error: {e}[/red]")
+            history.pop()
+            continue
+
+        # Simpan jawaban ke history
+        history.append({"role": "assistant", "content": "".join(response_parts)})
 
     await llm.close()
     await wazuh.close()
